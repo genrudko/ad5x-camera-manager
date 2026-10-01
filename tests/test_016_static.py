@@ -5,7 +5,7 @@ js=(root/'web/app.js').read_text()
 html=(root/'web/index.html').read_text()
 kl=(root/'ad5x_camera_manager.cfg').read_text()
 sh=(root/'camera-manager.sh').read_text()
-assert "APP_VERSION = '0.1.8-beta'" in app
+assert "APP_VERSION = '0.1.9-beta'" in app
 assert "FLUIDD_SERVICES = ('mjpegstreamer', 'mjpegstreamer-adaptive', 'uv4l-mjpeg')" in app
 assert "profile.get('fluidd_service')" in app
 assert "'service': 'iframe'" in app
