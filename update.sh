@@ -54,10 +54,11 @@ cp "$SRC/app.py" "$DATA/app.py"
 cp "$SRC/camera-manager.sh" "$DATA/camera-manager.sh"
 cp "$SRC/VERSION" "$DATA/VERSION"
 cp "$SRC/drivers/ov3660_orientation.py" "$DATA/drivers/ov3660_orientation.py"
+cp "$SRC/drivers/nebula_day_mode.py" "$DATA/drivers/nebula_day_mode.py"
 cp "$SRC/web/index.html" "$DATA/web/index.html"
 cp "$SRC/web/app.js" "$DATA/web/app.js"
 cp "$SRC/web/style.css" "$DATA/web/style.css"
-chmod 0755 "$DATA/app.py" "$DATA/camera-manager.sh" "$DATA/drivers/ov3660_orientation.py"
+chmod 0755 "$DATA/app.py" "$DATA/camera-manager.sh" "$DATA/drivers/ov3660_orientation.py" "$DATA/drivers/nebula_day_mode.py"
 chmod 0644 "$DATA/VERSION" "$DATA/web/"*
 
 if [ ! -f "$DATA/cameras.json" ]; then
@@ -86,11 +87,12 @@ fi
 
 # Validate copied runtime before restarting it.
 if [ "$CHROOT_MODE" = 1 ]; then
-    /bin/python3 -m py_compile "$DATA/app.py" "$DATA/drivers/ov3660_orientation.py"
+    /bin/python3 -m py_compile "$DATA/app.py" "$DATA/drivers/ov3660_orientation.py" "$DATA/drivers/nebula_day_mode.py"
 else
     chroot "$CHROOT_ROOT" /bin/python3 -m py_compile \
         /opt/config/mod_data/ad5x_camera_manager/app.py \
-        /opt/config/mod_data/ad5x_camera_manager/drivers/ov3660_orientation.py
+        /opt/config/mod_data/ad5x_camera_manager/drivers/ov3660_orientation.py \
+        /opt/config/mod_data/ad5x_camera_manager/drivers/nebula_day_mode.py
 fi
 sh -n "$DATA/camera-manager.sh"
 
