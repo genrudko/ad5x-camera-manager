@@ -18,11 +18,27 @@ PID="$BASE/run/camera-manager.pid"
 LOG="$BASE/logs/camera-manager-launch.log"
 mkdir -p "$BASE/run" "$BASE/logs"
 
+proc_matches_manager() {
+    P="$1"
+    [ -n "$P" ] || return 1
+    [ -r "/proc/$P/cmdline" ] || return 1
+    CMDLINE="$(tr '\000' ' ' <"/proc/$P/cmdline" 2>/dev/null || true)"
+    case "$CMDLINE" in
+        *"/opt/config/mod_data/ad5x_camera_manager/app.py serve"*) return 0 ;;
+        *"/usr/data/config/mod_data/ad5x_camera_manager/app.py serve"*) return 0 ;;
+    esac
+    return 1
+}
+
 alive() {
     [ -f "$PID" ] || return 1
     P="$(cat "$PID" 2>/dev/null || true)"
     [ -n "$P" ] || return 1
-    [ -d "/proc/$P" ]
+    proc_matches_manager "$P"
+}
+
+http_ready() {
+    wget -qO- --timeout=2 "http://127.0.0.1:$PORT/api/status" >/dev/null 2>&1
 }
 
 start_manager() {
@@ -35,23 +51,29 @@ start_manager() {
         [ -x /bin/python3 ] || { echo "ERROR: /bin/python3 missing" >&2; return 40; }
         [ -f "$BASE/app.py" ] || { echo "ERROR: app.py missing: $BASE/app.py" >&2; return 41; }
         echo "$(date '+%Y-%m-%d %H:%M:%S') launch" >>"$LOG"
-        /bin/sh -c "cd '$BASE' && nohup /bin/python3 '$BASE/app.py' serve >>'$BASE/logs/camera-manager-stdout.log' 2>&1 & echo \$! >'$BASE/run/camera-manager.pid'"
+        /bin/sh -c "cd '$BASE' || exit 1; nohup /bin/python3 '$BASE/app.py' serve </dev/null >>'$BASE/logs/camera-manager-stdout.log' 2>&1 & echo \$! >'$BASE/run/camera-manager.pid'"
     else
         [ -x "$HOST_CHROOT/bin/python3" ] || { echo "ERROR: Z-Mod chroot Python missing" >&2; return 40; }
         [ -f "$HOST_CHROOT$CHROOT_DATA/app.py" ] || { echo "ERROR: app.py missing in chroot: $CHROOT_DATA/app.py" >&2; return 41; }
         echo "$(date '+%Y-%m-%d %H:%M:%S') launch" >>"$LOG"
-        chroot "$HOST_CHROOT" /bin/sh -c "cd '$CHROOT_DATA' && nohup /bin/python3 '$CHROOT_DATA/app.py' serve >>'$CHROOT_DATA/logs/camera-manager-stdout.log' 2>&1 & echo \$! >'$CHROOT_DATA/run/camera-manager.pid'"
+        chroot "$HOST_CHROOT" /bin/sh -c "cd '$CHROOT_DATA' || exit 1; nohup /bin/python3 '$CHROOT_DATA/app.py' serve </dev/null >>'$CHROOT_DATA/logs/camera-manager-stdout.log' 2>&1 & echo \$! >'$CHROOT_DATA/run/camera-manager.pid'"
     fi
 
     N=0
-    while [ "$N" -lt 50 ]; do
-        alive && break
+    while [ "$N" -lt 100 ]; do
+        if alive && http_ready; then
+            break
+        fi
+        if ! alive && [ "$N" -gt 5 ]; then
+            break
+        fi
         N=$((N + 1))
         sleep 0.1
     done
-    if ! alive; then
-        echo "ERROR: camera-manager failed to start" >&2
-        tail -40 "$BASE/logs/camera-manager-stdout.log" 2>/dev/null || true
+    if ! alive || ! http_ready; then
+        echo "ERROR: camera-manager failed readiness check" >&2
+        rm -f "$PID"
+        tail -60 "$BASE/logs/camera-manager-stdout.log" 2>/dev/null || true
         return 42
     fi
     IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
@@ -67,11 +89,21 @@ stop_manager() {
     P="$(cat "$PID")"
     kill "$P" 2>/dev/null || true
     N=0
-    while [ "$N" -lt 40 ] && [ -d "/proc/$P" ]; do
+    while [ "$N" -lt 100 ] && proc_matches_manager "$P"; do
         N=$((N + 1)); sleep 0.1
     done
-    [ -d "/proc/$P" ] && kill -9 "$P" 2>/dev/null || true
+    if proc_matches_manager "$P"; then
+        kill -9 "$P" 2>/dev/null || true
+        N=0
+        while [ "$N" -lt 20 ] && proc_matches_manager "$P"; do
+            N=$((N + 1)); sleep 0.1
+        done
+    fi
     rm -f "$PID"
+    if proc_matches_manager "$P"; then
+        echo "ERROR: camera-manager pid $P did not stop" >&2
+        return 43
+    fi
     echo "camera-manager stopped"
 }
 
