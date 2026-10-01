@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AD5X Camera Manager</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <div>
+    <h1>📷 AD5X Camera Manager</h1>
+    <div class="sub" id="summary">Загрузка…</div>
+  </div>
+  <div class="header-actions">
+    <select id="lang"><option value="ru">RU</option><option value="en">EN</option></select>
+    <button id="rescan">↻ <span data-i18n="rescan">Обновить</span></button>
+  </div>
+</header>
+<main>
+  <section>
+    <h2 data-i18n="cameras">Камеры</h2>
+    <div id="camera-list" class="grid"></div>
+  </section>
+  <section>
+    <h2 data-i18n="devices">Обнаруженные UVC-устройства</h2>
+    <div id="device-list" class="device-list"></div>
+  </section>
+  <section class="system-card">
+    <h2 data-i18n="system">Система</h2>
+    <div id="system"></div>
+    <div class="actions system-actions"><button id="fluidd-ui" data-i18n="fluidd_ui">Добавить интерфейс Camera Manager во Fluidd</button></div>
+    <p class="muted" data-i18n="cpu_note">Camera Manager не проксирует видео — поток идёт напрямую от streamer к клиенту.</p>
+  </section>
+</main>
+
+<dialog id="editor">
+  <form method="dialog" id="editor-form">
+    <div class="dialog-head">
+      <h2 id="editor-title">Камера</h2>
+      <button class="icon" value="cancel">✕</button>
+    </div>
+    <input type="hidden" id="previous-id">
+    <div class="form-grid">
+      <label>ID<input id="f-id" required pattern="[A-Za-z0-9_-]+"></label>
+      <label><span data-i18n="name">Название</span><input id="f-name" required></label>
+      <label><span data-i18n="backend">Backend</span>
+        <select id="f-backend"><option value="mjpg_streamer">mjpg_streamer</option><option value="ustreamer">uStreamer</option></select>
+      </label>
+      <label><span data-i18n="port">Порт</span><input id="f-port" type="number" min="1024" max="65535"></label>
+      <label><span data-i18n="resolution">Разрешение</span><select id="f-resolution"></select></label>
+      <label>FPS request<select id="f-fps"></select></label>
+      <label>V4L2 buffers<input id="f-buffers" type="number" min="2" max="16"></label>
+      <label><span data-i18n="format">Формат</span>
+        <select id="f-format"><option>MJPEG</option><option>YUYV</option></select>
+      </label>
+      <label><span data-i18n="fluidd_type">Тип потока во Fluidd</span>
+        <select id="f-fluidd-service">
+          <option value="mjpegstreamer">MJPEG Stream</option>
+          <option value="mjpegstreamer-adaptive">MJPEG Adaptive</option>
+          <option value="uv4l-mjpeg">UV4L-MJPEG Stream</option>
+        </select>
+      </label>
+      <label><span data-i18n="sensor_policy">Ориентация / sensor policy</span>
+        <select id="f-policy">
+          <option value="none">Обычная / none</option>
+          <option value="ov3660_rot180">OV3660 — 180° аппаратно (все режимы)</option>
+        </select>
+      </label>
+    </div>
+    <div id="mode-source" class="muted mode-source"></div>
+    <fieldset>
+      <legend data-i18n="match">Привязка устройства</legend>
+      <div class="form-grid">
+        <label>VID<input id="f-vid"></label>
+        <label>PID<input id="f-pid"></label>
+        <label>USB path<input id="f-usb"></label>
+        <label>Serial<input id="f-serial"></label>
+      </div>
+    </fieldset>
+    <label class="check"><input id="f-enabled" type="checkbox"> <span data-i18n="enabled">Включена</span></label>
+    <div class="dialog-actions">
+      <button type="button" id="delete-btn" class="danger" data-i18n="delete">Удалить</button>
+      <span class="spacer"></span>
+      <button value="cancel" data-i18n="cancel">Отмена</button>
+      <button type="button" id="save-btn" class="primary" data-i18n="save">Сохранить и применить</button>
+    </div>
+  </form>
+</dialog>
+<dialog id="log-dialog">
+  <div class="dialog-head"><h2>Log</h2><button class="icon" onclick="document.getElementById('log-dialog').close()">✕</button></div>
+  <pre id="log-text"></pre>
+</dialog>
+<script src="/app.js"></script>
+</body>
+</html>

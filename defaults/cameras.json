@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "listen": {
+    "host": "0.0.0.0",
+    "port": 8095
+  },
+  "settings": {
+    "language": "ru",
+    "note": "Primary camera uses port 8080 so existing /webcam and Z-Mod Telegram notifications keep working."
+  },
+  "cameras": [
+    {
+      "id": "stock",
+      "name": "Штатная OV3660",
+      "enabled": true,
+      "backend": "mjpg_streamer",
+      "width": 2048,
+      "height": 1536,
+      "fps": 30,
+      "buffers": 4,
+      "format": "MJPEG",
+      "port": 8080,
+      "sensor_policy": "ov3660_rot180",
+      "match": {
+        "vid": "0c45",
+        "pid": "6366",
+        "serial": "",
+        "usb_path": "1-1.2",
+        "name_contains": ""
+      },
+      "fluidd_service": "mjpegstreamer"
+    }
+  ]
+}
