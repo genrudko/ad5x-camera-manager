@@ -160,9 +160,10 @@ else
 fi
 sh -n "$DATA/camera-manager.sh"
 
-# Stop any previous manager generation. The legacy and new paths may coexist during migration.
+# Stop the current runtime first and wait for a complete handover. Then clean
+# any legacy generation that may still coexist during migration.
+"$DATA/camera-manager.sh" stop
 [ -x "$OLD_DATA/camera-manager.sh" ] && "$OLD_DATA/camera-manager.sh" stop 2>/dev/null || true
-"$DATA/camera-manager.sh" stop 2>/dev/null || true
 [ -x "$SAFE" ] && "$SAFE" stop 2>/dev/null || true
 
 # Clean up only streamer PIDs owned by Camera Manager. Never kill unrelated
