@@ -30,7 +30,7 @@ MANAGER_LOG = LOG_DIR / 'camera-manager.log'
 MANAGER_PID = RUN_DIR / 'camera-manager.pid'
 DEFAULT_LISTEN = '0.0.0.0'
 DEFAULT_PORT = 8095
-APP_VERSION = '0.1.8-beta'
+APP_VERSION = '0.1.9-beta'
 FLUIDD_SERVICES = ('mjpegstreamer', 'mjpegstreamer-adaptive', 'uv4l-mjpeg')
 
 V4L2_CAP_VIDEO_CAPTURE = 0x00000001
@@ -373,22 +373,28 @@ def apply_sensor_policy(profile: dict[str, Any], device: str) -> dict[str, Any] 
     if policy == 'none':
         return None
 
-    if policy not in ('ov3660_rot180', 'ov3660_qxga_rot180'):
+    if policy in ('ov3660_rot180', 'ov3660_qxga_rot180'):
+        helper = BASE / 'drivers' / 'ov3660_orientation.py'
+        command = 'apply'
+        attempts = 10
+        label = 'OV3660'
+    elif policy == 'nebula_force_day':
+        helper = BASE / 'drivers' / 'nebula_day_mode.py'
+        command = 'ensure-day'
+        attempts = 3
+        label = 'Nebula'
+    else:
         raise RuntimeError(f'unknown sensor policy: {policy}')
 
-    helper = BASE / 'drivers' / 'ov3660_orientation.py'
     if not helper.exists():
-        raise RuntimeError(f'OV3660 helper missing: {helper}')
+        raise RuntimeError(f'{label} helper missing: {helper}')
 
     failures: list[str] = []
 
-    # The old safe wrapper intentionally retried the exact helper because
-    # Sonix SCCB may briefly return garbage while UVC streaming settles.
-    # Preserve that proven behavior here.
-    for attempt in range(1, 11):
+    for attempt in range(1, attempts + 1):
         try:
             cp = subprocess.run(
-                [sys.executable, str(helper), device, 'apply'],
+                [sys.executable, str(helper), device, command],
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
@@ -417,7 +423,8 @@ def apply_sensor_policy(profile: dict[str, Any], device: str) -> dict[str, Any] 
         time.sleep(0.35)
 
     raise RuntimeError(
-        'OV3660 helper failed after 10 attempts: ' + ' | '.join(failures[-3:])
+        f'{label} helper failed after {attempts} attempts: ' +
+        ' | '.join(failures[-3:])
     )
 
 
@@ -596,20 +603,48 @@ class CameraRuntime:
             if sensor:
                 log(f'{cid}: sensor policy applied: {sensor}')
         except Exception as e:
-            # A failed mandatory sensor policy is a failed camera start. Do not
-            # leave an apparently-live streamer behind: monitor_loop would see
-            # pid+port and never retry, while snapshots may already be wedged.
-            self.errors[cid] = f'sensor policy failed: {e}'
-            log(f'{cid}: {self.errors[cid]}')
-            kill_pidfile(pidfile)
-            self.processes.pop(cid, None)
-            self.cpu_percent.pop(cid, None)
-            self._cpu_prev.pop(cid, None)
-            log(f'{cid}: start aborted after sensor policy failure; monitor will retry')
-            return
+            policy = str(profile.get('sensor_policy') or 'none')
+            if policy == 'nebula_force_day':
+                # Day-mode control is a watchdog policy, not a prerequisite for
+                # video. Keep the stream alive and retry the XU control later.
+                self.errors[cid] = f'day-mode watchdog warning: {e}'
+                log(f'{cid}: {self.errors[cid]}')
+            else:
+                # OV3660 orientation is mandatory: a half-applied SCCB state can
+                # leave a seemingly-live but unusable stream.
+                self.errors[cid] = f'sensor policy failed: {e}'
+                log(f'{cid}: {self.errors[cid]}')
+                kill_pidfile(pidfile)
+                self.processes.pop(cid, None)
+                self.cpu_percent.pop(cid, None)
+                self._cpu_prev.pop(cid, None)
+                log(f'{cid}: start aborted after sensor policy failure; monitor will retry')
+                return
         else:
             self.errors.pop(cid, None)
         log(f"{cid}: started pid={proc.pid} device={d['node']} port={port}")
+    def enforce_periodic_sensor_policy(self, profile: dict[str, Any]) -> None:
+        if str(profile.get('sensor_policy') or 'none') != 'nebula_force_day':
+            return
+        cid = profile['id']
+        with self._ops_lock:
+            cfg = load_config()
+            self.refresh_devices(cfg)
+            device = self._resolve_profile_device(profile)
+            if not device:
+                return
+            try:
+                result = apply_sensor_policy(profile, device['node'])
+            except Exception as e:
+                self.errors[cid] = f'day-mode watchdog warning: {e}'
+                log(f'{cid}: {self.errors[cid]}')
+                return
+            if str(self.errors.get(cid, '')).startswith('day-mode watchdog warning:'):
+                self.errors.pop(cid, None)
+            output = str((result or {}).get('output') or '')
+            if output.startswith('forced DAY'):
+                log(f'{cid}: Nebula watchdog {output}')
+
     def stop_camera(self, cid: str) -> None:
         with self._ops_lock:
             kill_pidfile(self.pidfile(cid))
@@ -692,7 +727,7 @@ def validate_profile(p: dict[str, Any], all_cfg: dict[str, Any], previous_id: st
     p['sensor_policy'] = str(p.get('sensor_policy', 'none'))
     if p['sensor_policy'] == 'ov3660_qxga_rot180':
         p['sensor_policy'] = 'ov3660_rot180'
-    if p['sensor_policy'] not in ('none', 'ov3660_rot180'): raise ValueError('invalid sensor_policy')
+    if p['sensor_policy'] not in ('none', 'ov3660_rot180', 'nebula_force_day'): raise ValueError('invalid sensor_policy')
     m = p.get('match') or {}
     p['match'] = {'vid':str(m.get('vid') or '').lower(),'pid':str(m.get('pid') or '').lower(),'serial':str(m.get('serial') or ''),
                   'usb_path':str(m.get('usb_path') or ''),'name_contains':str(m.get('name_contains') or '')}
@@ -770,7 +805,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 baseid=sanitize_id(str(d.get('product') or d.get('name') or Path(node).name)); cid=baseid; n=2; ids={x['id'] for x in cfg['cameras']}
                 while cid in ids: cid=f'{baseid}-{n}'; n+=1
                 p={'id':cid,'name':d.get('product') or d.get('name') or cid,'enabled':False,'backend':'mjpg_streamer','width':1280,'height':720,
-                   'fps':30,'buffers':4,'format':'MJPEG','port':port,'sensor_policy':'none','fluidd_service':'mjpegstreamer',
+                   'fps':30,'buffers':4,'format':'MJPEG','port':port,'sensor_policy':('nebula_force_day' if str(d.get('vid','')).lower()=='a108' and str(d.get('pid','')).lower()=='2231' else 'none'),'fluidd_service':'mjpegstreamer',
                    'match':{'vid':d.get('vid',''),'pid':d.get('pid',''),'serial':d.get('serial',''),'usb_path':d.get('usb_path',''),'name_contains':''}}
                 cfg['cameras'].append(p); save_config(cfg); return self._json({'ok':True,'profile':p,'status':runtime.status()})
             if path == '/api/profile/delete':
@@ -794,6 +829,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 def monitor_loop() -> None:
     next_scan=0.0
+    next_policy=0.0
     while not _shutdown.wait(1.0):
         try:
             runtime.sample_cpu(); now=time.monotonic()
@@ -803,6 +839,12 @@ def monitor_loop() -> None:
                     if not p.get('enabled',True): continue
                     cid=p['id']; pid=read_pidfile(runtime.pidfile(cid))
                     if not proc_alive(pid) or not port_open(int(p.get('port',8080))): runtime.start_camera(p)
+            if now >= next_policy:
+                next_policy=now+60.0; cfg=load_config()
+                for p in cfg.get('cameras',[]):
+                    if not p.get('enabled',True): continue
+                    if str(p.get('sensor_policy') or 'none') == 'nebula_force_day':
+                        runtime.enforce_periodic_sensor_policy(p)
         except Exception as e: log(f'monitor warning: {e}')
 
 def camera_bootstrap_loop() -> None:
