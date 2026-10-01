@@ -32,6 +32,70 @@ case "$SRC" in
         ;;
 esac
 
+# Runtime deployment is not allowed while a print may be active.
+# Moonraker print_stats uses the "state" property (not "status").
+# Fail closed: if we cannot prove an idle/non-printing state, leave the
+# currently running Camera Manager untouched and make the update fail visibly.
+query_print_state() {
+    if [ "$CHROOT_MODE" = 1 ]; then
+        /bin/python3 - <<'PY'
+import json
+import urllib.request
+
+try:
+    with urllib.request.urlopen(
+        "http://127.0.0.1:7125/printer/objects/query?print_stats=state",
+        timeout=5,
+    ) as r:
+        obj = json.load(r)
+    print(
+        obj.get("result", {})
+           .get("status", {})
+           .get("print_stats", {})
+           .get("state", "unknown")
+    )
+except Exception:
+    print("unknown")
+PY
+    else
+        chroot "$CHROOT_ROOT" /bin/python3 - <<'PY'
+import json
+import urllib.request
+
+try:
+    with urllib.request.urlopen(
+        "http://127.0.0.1:7125/printer/objects/query?print_stats=state",
+        timeout=5,
+    ) as r:
+        obj = json.load(r)
+    print(
+        obj.get("result", {})
+           .get("status", {})
+           .get("print_stats", {})
+           .get("state", "unknown")
+    )
+except Exception:
+    print("unknown")
+PY
+    fi
+}
+
+PRINT_STATE="$(query_print_state | tail -n 1)"
+echo "Klipper print state: $PRINT_STATE"
+
+case "$PRINT_STATE" in
+    standby|complete|cancelled|error)
+        ;;
+    printing|paused)
+        echo "ERROR: refusing Camera Manager runtime update while print state is $PRINT_STATE" >&2
+        exit 75
+        ;;
+    *)
+        echo "ERROR: cannot prove printer is idle (print state: $PRINT_STATE); refusing runtime update" >&2
+        exit 76
+        ;;
+esac
+
 mkdir -p "$DATA" "$DATA/logs" "$DATA/run" "$DATA/backups"
 
 # One-time migration from the pre-repository beta layout. Preserve user state.
@@ -100,8 +164,21 @@ sh -n "$DATA/camera-manager.sh"
 [ -x "$OLD_DATA/camera-manager.sh" ] && "$OLD_DATA/camera-manager.sh" stop 2>/dev/null || true
 "$DATA/camera-manager.sh" stop 2>/dev/null || true
 [ -x "$SAFE" ] && "$SAFE" stop 2>/dev/null || true
-killall mjpg_streamer 2>/dev/null || true
-killall ustreamer 2>/dev/null || true
+
+# Clean up only streamer PIDs owned by Camera Manager. Never kill unrelated
+# system camera processes globally.
+for PF in "$DATA"/run/camera-*.pid "$OLD_DATA"/run/camera-*.pid; do
+    [ -f "$PF" ] || continue
+    P="$(cat "$PF" 2>/dev/null || true)"
+    [ -n "$P" ] || { rm -f "$PF"; continue; }
+    if [ -r "/proc/$P/cmdline" ]; then
+        CMD="$(tr '\000' ' ' <"/proc/$P/cmdline" 2>/dev/null || true)"
+        case "$CMD" in
+            *mjpg_streamer*|*ustreamer*) kill "$P" 2>/dev/null || true ;;
+        esac
+    fi
+    rm -f "$PF"
+done
 
 "$DATA/camera-manager.sh" start
 
