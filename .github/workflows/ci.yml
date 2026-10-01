@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Python syntax
+        run: python3 -m py_compile app.py drivers/ov3660_orientation.py
+      - name: Shell syntax
+        run: |
+          sh -n install.sh
+          sh -n update.sh
+          sh -n uninstall.sh
+          sh -n camera-manager.sh
+      - name: Unit and regression tests
+        run: python3 -m unittest discover -s tests -v
