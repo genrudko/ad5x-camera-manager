@@ -2,7 +2,7 @@
 
 Multi-camera manager for **Flashforge Adventurer 5X (AD5X) + Z-Mod**.
 
-> Current development baseline: **0.1.8-beta**. The runtime camera code is based on the physically tested 0.1.7-beta line; 0.1.8-beta restructures installation and updates as a native Z-Mod git plugin.
+> Current development baseline: **0.1.9-beta**. The runtime camera code is based on the physically tested 0.1.7-beta line; 0.1.9-beta restructures installation and updates as a native Z-Mod git plugin.
 
 [Русская документация](README_ru.md)
 
