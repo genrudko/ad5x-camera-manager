@@ -1,0 +1,58 @@
+name: Tag Release
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Create version tag for release commits
+        shell: bash
+        run: |
+          set -euo pipefail
+          subject="$(git log -1 --pretty=%s)"
+          case "$subject" in
+            release:*) ;;
+            *)
+              echo "Not a release commit: $subject"
+              exit 0
+              ;;
+          esac
+
+          version="$(tr -d '\r\n' < VERSION)"
+          tag="v$version"
+
+          if [ "$subject" != "release: $tag" ]; then
+            echo "Release commit subject must be exactly: release: $tag"
+            exit 1
+          fi
+
+          if git rev-parse "$tag" >/dev/null 2>&1; then
+            tagged="$(git rev-list -n1 "$tag")"
+            head="$(git rev-parse HEAD)"
+            if [ "$tagged" = "$head" ]; then
+              echo "$tag already points at this commit"
+              exit 0
+            fi
+            echo "ERROR: $tag already exists on $tagged"
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$tag" -m "AD5X Camera Manager $tag"
+          git push origin "$tag"
