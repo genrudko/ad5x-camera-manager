@@ -72,9 +72,33 @@ def load_config() -> dict[str, Any]:
     raw.setdefault('listen', {'host': DEFAULT_LISTEN, 'port': DEFAULT_PORT})
     raw.setdefault('settings', {})
     raw.setdefault('cameras', [])
+
+    # Config schema v2 folds the previously standalone Nebula DAY watchdog
+    # into Camera Manager. Apply this migration only once; afterwards a user
+    # may deliberately choose another sensor policy without it being reset.
+    migrated = False
+    if int(raw.get('version') or 1) < 2:
+        for profile in raw['cameras']:
+            if not isinstance(profile, dict):
+                continue
+            match = profile.get('match') or {}
+            if (
+                str(match.get('vid') or '').lower() == 'a108'
+                and str(match.get('pid') or '').lower() == '2231'
+                and str(profile.get('sensor_policy') or 'none') == 'none'
+            ):
+                profile['sensor_policy'] = 'nebula_force_day'
+                migrated = True
+        raw['version'] = 2
+        migrated = True
+
     for profile in raw['cameras']:
         if isinstance(profile, dict):
             profile.setdefault('fluidd_service', 'mjpegstreamer')
+
+    if migrated:
+        atomic_json(CONFIG_PATH, raw)
+        log('config migrated to schema v2 (Nebula DAY watchdog integrated)')
     return raw
 
 
