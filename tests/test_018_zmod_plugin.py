@@ -7,7 +7,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 class ZModPluginLayoutTests(unittest.TestCase):
     def test_version_and_runtime_paths(self):
         app = (ROOT / "app.py").read_text()
-        self.assertIn("APP_VERSION = '0.1.8-beta'", app)
+        self.assertIn("APP_VERSION = '0.1.9-beta'", app)
         self.assertIn("/opt/config/mod_data/ad5x_camera_manager", app)
         self.assertNotIn("ad5x_custom/camera_manager", app)
 
