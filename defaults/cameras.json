@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "listen": {
     "host": "0.0.0.0",
     "port": 8095
