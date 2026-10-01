@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Validate
         run: |
-          python3 -m py_compile app.py drivers/ov3660_orientation.py
+          python3 -m py_compile app.py drivers/ov3660_orientation.py drivers/nebula_day_mode.py
           sh -n install.sh update.sh uninstall.sh camera-manager.sh
           python3 -m unittest discover -s tests -v
       - name: Build release archive
