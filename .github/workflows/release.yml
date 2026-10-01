@@ -29,6 +29,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           NAME="ad5x-camera-manager-${GITHUB_REF_NAME}.zip"
+          prerelease=""
+          case "$GITHUB_REF_NAME" in
+            *alpha*|*beta*|*rc*|*pre*|*preview*) prerelease="--prerelease" ;;
+          esac
           gh release create "$GITHUB_REF_NAME" "$NAME" SHA256SUMS \
             --generate-notes \
-            --title "AD5X Camera Manager ${GITHUB_REF_NAME}"
+            --title "AD5X Camera Manager ${GITHUB_REF_NAME}" \
+            $prerelease
