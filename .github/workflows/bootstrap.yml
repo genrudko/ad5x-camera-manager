@@ -35,8 +35,13 @@ jobs:
           base64 -d /tmp/repo.tar.gz.b64 > /tmp/repo.tar.gz
           echo "0cd629962d5695a5fd5a239a2559445ab482d6cf21811ab222b0b957fd49b1da  /tmp/repo.tar.gz" | sha256sum -c -
           tar -xzf /tmp/repo.tar.gz
+
+          # Workflow files are created separately through the GitHub connector.
+          # The Actions GITHUB_TOKEN is intentionally not allowed to add workflows.
+          rm -f .github/workflows/ci.yml .github/workflows/release.yml
           rm -rf .bootstrap
           rm -f .github/workflows/bootstrap.yml
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
