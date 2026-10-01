@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Python syntax
-        run: python3 -m py_compile app.py drivers/ov3660_orientation.py
+        run: python3 -m py_compile app.py drivers/ov3660_orientation.py drivers/nebula_day_mode.py
       - name: Shell syntax
         run: |
           sh -n install.sh
